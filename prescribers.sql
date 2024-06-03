@@ -38,12 +38,13 @@ ORDER BY total_number_of_claims DESC NULLS LAST
 LIMIT 1;
 
 -- 2c. **Challenge Question:** Are there any specialties that appear in the prescriber table that have no associated prescriptions in the prescription table?
-SELECT  DISTINCT specialty_description
+SELECT specialty_description, SUM(total_claim_count) AS total_count
 FROM PRESCRIBER 
  LEFT JOIN PRESCRIPTION USING(NPI)
-WHERE total_claim_count IS NULL OR total_claim_count=0;
+GROUP BY specialty_description
+HAVING SUM(total_claim_count) IS NULL OR SUM(total_claim_count)=0
 
-
+	
 --2d. For each specialty, report the percentage of total claims by that specialty which are for opioids. 
 --Which specialties have a high percentage of opioids?
 WITH total_claims1 AS (
@@ -75,15 +76,17 @@ ORDER BY
 
 
 --3a. Which drug (generic_name) had the highest total drug cost?
-SELECT generic_name, total_drug_cost
+SELECT generic_name, SUM(total_drug_cost) AS total_cost
 FROM PRESCRIPTION INNER JOIN DRUG USING (drug_name)
-ORDER BY total_drug_cost DESC
+GROUP BY generic_name
+ORDER BY total_cost DESC
 LIMIT 1;
 
 --3b. Which drug (generic_name) has the hightest total cost per day? **Bonus: Round your cost per day column to 2 decimal places. Google ROUND to see how this works.**
-SELECT generic_name, ROUND(total_drug_cost/total_day_supply,2) AS total_cost_per_day
+SELECT generic_name, ROUND(SUM(total_drug_cost)/SUM(total_day_supply),2) AS total_cost_per_day
 FROM PRESCRIPTION INNER JOIN DRUG USING (drug_name)
-ORDER BY total_drug_cost DESC
+GROUP BY generic_name
+ORDER BY  total_cost_per_day DESC
 LIMIT 1;
 
 
@@ -99,7 +102,7 @@ FROM drug;
 --Hint: Format the total costs as MONEY for easier comparision.
 
 SELECT drug_category,
-    CAST(SUM(total_drug_cost) AS MONEY) AS total_cost
+    CAST(SUM(total_drug_cost) AS money) AS total_cost
 FROM (
     SELECT drug_name,
         CASE 
@@ -111,11 +114,24 @@ FROM (
 ) AS categorized_drugs INNER JOIN prescription USING (drug_name)
 GROUP BY drug_category;
 
+----------------
+WITH categorized_drugs AS (SELECT drug_name,
+        CASE 
+            WHEN opioid_drug_flag = 'Y' THEN 'opioid'
+            WHEN antibiotic_drug_flag = 'Y' THEN 'antibiotic'
+            ELSE 'neither' 
+            END AS drug_category
+    FROM drug )
+
+SELECT drug_category, CAST(SUM(total_drug_cost) AS money) AS total_cost
+FROM categorized_drugs INNER JOIN prescription USING (drug_name)
+GROUP BY drug_category;
 
 --5a. How many CBSAs are in Tennessee? **Warning:** The cbsa table contains information for all states, not just Tennessee.
 SELECT COUNT(DISTINCT cbsa) 
 FROM cbsa
-WHERE cbsaname ILIKE '%TN%';
+WHERE cbsaname LIKE '%TN%';
+
 
 --5b. Which cbsa has the largest combined population? Which has the smallest? Report the CBSA name and total population.
 --LARGEST POPULATION
@@ -138,7 +154,7 @@ SELECT county,population
 FROM fips_county
 INNER JOIN population USING (fipscounty) 
 WHERE  population IS NOT NULL AND fipscounty NOT IN 
-(SELECT fipscounty
+(SELECT DISTINCT fipscounty
 	FROM cbsa)
 ORDER BY population DESC
 LIMIT 1;
